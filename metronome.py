@@ -122,14 +122,15 @@ class Metronome(threading.Thread):
             time.sleep(min(dt, 0.004))
 
 
-def run_overlay(engine: Metronome, q: queue.Queue, snd_paths):
+def run_overlay(engine: Metronome, q: queue.Queue, snd_paths, volume=0.8):
     """Плавающее окно на нативном AppKit (PyObjC)."""
     import warnings
     import objc
     warnings.filterwarnings("ignore", category=objc.ObjCPointerWarning)
     from AppKit import (
-        NSApplication, NSApp, NSWindow, NSView, NSButton, NSTextField, NSColor,
-        NSFont, NSSound, NSScreen, NSTimer, NSObject, NSBackingStoreBuffered,
+        NSApplication, NSApp, NSWindow, NSView, NSButton, NSSlider, NSTextField,
+        NSColor, NSFont, NSSound, NSScreen, NSTimer, NSObject,
+        NSBackingStoreBuffered,
         NSWindowStyleMaskBorderless, NSStatusWindowLevel, NSTextAlignmentCenter,
         NSApplicationActivationPolicyAccessory, NSRunLoop, NSRunLoopCommonModes,
         NSWindowCollectionBehaviorCanJoinAllSpaces,
@@ -140,7 +141,8 @@ def run_overlay(engine: Metronome, q: queue.Queue, snd_paths):
     from Foundation import NSMakeRect, NSAttributedString, NSMutableAttributedString
     from PyObjCTools import AppHelper
 
-    W, H = 280.0, 210.0
+    W, H = 280.0, 252.0
+    volume = max(0.0, min(1.0, float(volume)))
 
     # Цвета точек-битов.
     C_DIM = NSColor.colorWithCalibratedWhite_alpha_(1.0, 0.22)
@@ -150,6 +152,8 @@ def run_overlay(engine: Metronome, q: queue.Queue, snd_paths):
     # --- звук: два NSSound, играем из потока движка ---
     snd_hi = NSSound.alloc().initWithContentsOfFile_byReference_(snd_paths[0], True)
     snd_lo = NSSound.alloc().initWithContentsOfFile_byReference_(snd_paths[1], True)
+    snd_hi.setVolume_(volume)
+    snd_lo.setVolume_(volume)
 
     def play(accent):
         s = snd_hi if accent else snd_lo
@@ -261,6 +265,11 @@ def run_overlay(engine: Metronome, q: queue.Queue, snd_paths):
             }
             return NSAttributedString.alloc().initWithString_attributes_(glyph, attrs)
 
+        def volume_(self, sender):
+            v = float(sender.doubleValue())
+            self.snd_hi.setVolume_(v)
+            self.snd_lo.setVolume_(v)
+
         def close_(self, sender):
             NSApp().terminate_(None)
 
@@ -306,35 +315,48 @@ def run_overlay(engine: Metronome, q: queue.Queue, snd_paths):
     window.setContentView_(content)
 
     # Точки-биты (сверху).
-    dots = make_label(NSMakeRect(10, H - 58, W - 20, 28), 18, C_DIM)
+    dots = make_label(NSMakeRect(10, H - 54, W - 20, 28), 18, C_DIM)
     content.addSubview_(dots)
 
     # BPM крупно + − / +.
-    bpm_label = make_label(NSMakeRect(40, 96, W - 80, 60), 46, NSColor.whiteColor(), bold=True)
+    bpm_label = make_label(NSMakeRect(40, 132, W - 80, 58), 46, NSColor.whiteColor(), bold=True)
     content.addSubview_(bpm_label)
-    caption = make_label(NSMakeRect(40, 80, W - 80, 16), 11,
+    caption = make_label(NSMakeRect(40, 116, W - 80, 16), 11,
                          NSColor.colorWithCalibratedWhite_alpha_(0.5, 1.0))
     caption.setStringValue_("BPM")
     content.addSubview_(caption)
 
-    minus = make_button(NSMakeRect(14, 104, 42, 46), "\u2212", 34, b"dec:")
-    plus = make_button(NSMakeRect(W - 56, 104, 42, 46), "+", 34, b"inc:")
+    minus = make_button(NSMakeRect(14, 140, 42, 46), "\u2212", 34, b"dec:")
+    plus = make_button(NSMakeRect(W - 56, 140, 42, 46), "+", 34, b"inc:")
     content.addSubview_(minus)
     content.addSubview_(plus)
 
     # Доли: − N доли +.
-    beats_minus = make_button(NSMakeRect(58, 46, 26, 26), "\u2212", 18, b"decBeats:")
-    beats_label = make_label(NSMakeRect(90, 45, W - 180, 26), 13,
+    beats_minus = make_button(NSMakeRect(58, 84, 26, 26), "\u2212", 18, b"decBeats:")
+    beats_label = make_label(NSMakeRect(90, 83, W - 180, 26), 13,
                              NSColor.colorWithCalibratedWhite_alpha_(0.7, 1.0))
-    beats_plus = make_button(NSMakeRect(W - 84, 46, 26, 26), "+", 18, b"incBeats:")
+    beats_plus = make_button(NSMakeRect(W - 84, 84, 26, 26), "+", 18, b"incBeats:")
     content.addSubview_(beats_minus)
     content.addSubview_(beats_label)
     content.addSubview_(beats_plus)
 
     # Play / Pause.
-    play_btn = make_button(NSMakeRect(W / 2 - 34, 10, 68, 30), "\u25B6", 22, b"toggle:",
+    play_btn = make_button(NSMakeRect(W / 2 - 34, 46, 68, 30), "\u25B6", 22, b"toggle:",
                            color=NSColor.whiteColor())
     content.addSubview_(play_btn)
+
+    # Громкость: иконка + ползунок (снизу).
+    vol_icon = make_label(NSMakeRect(12, 11, 26, 22), 14,
+                          NSColor.colorWithCalibratedWhite_alpha_(0.7, 1.0))
+    vol_icon.setStringValue_("\U0001F509")
+    content.addSubview_(vol_icon)
+    vol_slider = NSSlider.alloc().initWithFrame_(NSMakeRect(42, 13, W - 56, 18))
+    vol_slider.setMinValue_(0.0)
+    vol_slider.setMaxValue_(1.0)
+    vol_slider.setDoubleValue_(volume)
+    vol_slider.setContinuous_(True)
+    vol_slider.setAction_(b"volume:")
+    content.addSubview_(vol_slider)
 
     # Кнопка закрытия.
     close_btn = make_button(NSMakeRect(W - 30, H - 30, 22, 22), "\u2715", 16, b"close:",
@@ -353,10 +375,12 @@ def run_overlay(engine: Metronome, q: queue.Queue, snd_paths):
     controller.bpm_label = bpm_label
     controller.beats_label = beats_label
     controller.play_btn = play_btn
+    controller.snd_hi = snd_hi
+    controller.snd_lo = snd_lo
     controller.refresh_bpm()
     controller.refresh_beats()
 
-    for b in (minus, plus, beats_minus, beats_plus, play_btn, close_btn):
+    for b in (minus, plus, beats_minus, beats_plus, play_btn, close_btn, vol_slider):
         b.setTarget_(controller)
 
     content.controller = controller
@@ -381,6 +405,8 @@ def main():
     parser = argparse.ArgumentParser(description="Минималистичный метроном для macOS")
     parser.add_argument("--bpm", type=int, default=120, help="Темп, BPM (по умолчанию 120)")
     parser.add_argument("--beats", type=int, default=4, help="Долей в такте (по умолчанию 4)")
+    parser.add_argument("--volume", type=float, default=0.8,
+                        help="Громкость клика 0.0–1.0 (по умолчанию 0.8)")
     args = parser.parse_args()
 
     try:
@@ -403,7 +429,7 @@ def main():
     bpm = max(MIN_BPM, min(MAX_BPM, args.bpm))
     beats = max(MIN_BEATS, min(MAX_BEATS, args.beats))
     engine = Metronome(q, play=lambda accent: None, bpm=bpm, beats=beats)
-    run_overlay(engine, q, (hi, lo))
+    run_overlay(engine, q, (hi, lo), volume=args.volume)
 
 
 if __name__ == "__main__":
