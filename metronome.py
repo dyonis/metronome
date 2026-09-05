@@ -1,16 +1,17 @@
 #!/usr/bin/env python3
 """
-Минималистичный метроном для macOS.
+Minimalist metronome for macOS.
 
-Маленькое плавающее окно поверх всех окон на нативном AppKit (PyObjC):
-  - темп (BPM) с кнопками − / +;
+A small floating window that stays on top of all windows, built with native
+AppKit (PyObjC):
+  - tempo (BPM) with - / + buttons;
   - play / pause;
-  - количество долей в такте с акцентом на первую;
-  - визуальные точки-биты;
-  - звуковой клик (WAV синтезируется на лету, внешних файлов не нужно).
+  - beats per measure with an accent on the first beat;
+  - visual beat dots;
+  - audio click (WAV synthesized on the fly, no external files needed).
 
-Запуск:
-    python metronome.py            # темп 120, 4 доли
+Run:
+    python metronome.py            # 120 BPM, 4 beats
     python metronome.py --bpm 96 --beats 3
 """
 
@@ -31,7 +32,7 @@ MIN_BEATS, MAX_BEATS = 1, 12
 
 
 def _write_click(path, freq=1000.0, ms=55, sr=44100, volume=0.6):
-    """Синтезировать короткий щелчок (затухающая синусоида) в WAV-файл."""
+    """Synthesize a short click (decaying sine) into a WAV file."""
     n = int(sr * ms / 1000)
     with wave.open(path, "w") as w:
         w.setnchannels(1)
@@ -40,7 +41,7 @@ def _write_click(path, freq=1000.0, ms=55, sr=44100, volume=0.6):
         frames = bytearray()
         for i in range(n):
             t = i / sr
-            env = math.exp(-t * 70.0)          # быстрое затухание -> нет «хвоста»
+            env = math.exp(-t * 70.0)          # fast decay -> no lingering tail
             s = math.sin(2 * math.pi * freq * t) * env * volume
             s = max(-1.0, min(1.0, s))
             frames += struct.pack("<h", int(s * 32767))
@@ -48,10 +49,10 @@ def _write_click(path, freq=1000.0, ms=55, sr=44100, volume=0.6):
 
 
 class Metronome(threading.Thread):
-    """Точный планировщик тиков в отдельном потоке.
+    """Precise tick scheduler running on its own thread.
 
-    Звук проигрывается через переданный callback play(accent: bool).
-    На каждый бит кладёт в очередь ("beat", index) для подсветки в UI.
+    Sound is produced via the given play(accent: bool) callback.
+    On each beat it puts ("beat", index) on the queue for UI highlighting.
     """
 
     def __init__(self, out_queue, play, bpm=120, beats=4):
@@ -60,11 +61,11 @@ class Metronome(threading.Thread):
         self.play = play
         self.bpm = bpm
         self.beats = beats
-        self._running = threading.Event()   # идёт ли отсчёт
-        self._wake = threading.Event()      # разбудить поток при старте
+        self._running = threading.Event()   # whether ticking is active
+        self._wake = threading.Event()      # wake the thread on start
         self._stop = threading.Event()
 
-    # --- управление из UI ---
+    # --- control from the UI ---
     def set_bpm(self, bpm):
         self.bpm = max(MIN_BPM, min(MAX_BPM, int(bpm)))
 
@@ -87,10 +88,10 @@ class Metronome(threading.Thread):
         self._running.clear()
         self._wake.set()
 
-    # --- сам цикл ---
+    # --- the loop itself ---
     def run(self):
         while not self._stop.is_set():
-            # Ждём команды на старт.
+            # Wait for a start command.
             if not self._running.is_set():
                 self._wake.wait()
                 self._wake.clear()
@@ -114,7 +115,7 @@ class Metronome(threading.Thread):
                 self._sleep_until(next_time)
 
     def _sleep_until(self, target):
-        # Грубый сон + короткий спин для точности, с проверкой остановки.
+        # Coarse sleep + short spin for accuracy, checking for stop.
         while not self._stop.is_set() and self._running.is_set():
             dt = target - time.perf_counter()
             if dt <= 0:
@@ -123,7 +124,7 @@ class Metronome(threading.Thread):
 
 
 def run_overlay(engine: Metronome, q: queue.Queue, snd_paths, volume=0.8):
-    """Плавающее окно на нативном AppKit (PyObjC)."""
+    """Floating window on native AppKit (PyObjC)."""
     import warnings
     import objc
     warnings.filterwarnings("ignore", category=objc.ObjCPointerWarning)
@@ -144,12 +145,12 @@ def run_overlay(engine: Metronome, q: queue.Queue, snd_paths, volume=0.8):
     W, H = 280.0, 252.0
     volume = max(0.0, min(1.0, float(volume)))
 
-    # Цвета точек-битов.
+    # Beat-dot colors.
     C_DIM = NSColor.colorWithCalibratedWhite_alpha_(1.0, 0.22)
     C_ON = NSColor.whiteColor()
     C_ACCENT = NSColor.colorWithCalibratedRed_green_blue_alpha_(1.0, 0.62, 0.16, 1.0)
 
-    # --- звук: два NSSound, играем из потока движка ---
+    # --- sound: two NSSound objects, played from the engine thread ---
     snd_hi = NSSound.alloc().initWithContentsOfFile_byReference_(snd_paths[0], True)
     snd_lo = NSSound.alloc().initWithContentsOfFile_byReference_(snd_paths[1], True)
     snd_hi.setVolume_(volume)
@@ -209,7 +210,7 @@ def run_overlay(engine: Metronome, q: queue.Queue, snd_paths, volume=0.8):
         return b
 
     class Controller(NSObject):
-        # --- обновление точек ---
+        # --- update beat dots ---
         def refresh_dots(self, current):
             s = NSMutableAttributedString.alloc().init()
             font = NSFont.systemFontOfSize_(18)
@@ -228,10 +229,11 @@ def run_overlay(engine: Metronome, q: queue.Queue, snd_paths, volume=0.8):
             self.bpm_label.setStringValue_(str(self.engine.bpm))
 
         def refresh_beats(self):
-            self.beats_label.setStringValue_(f"{self.engine.beats} \u0434\u043e\u043b\u0438")
+            n = self.engine.beats
+            self.beats_label.setStringValue_(f"{n} beat" + ("" if n == 1 else "s"))
             self.refresh_dots(-1)
 
-        # --- действия ---
+        # --- actions ---
         def bump_(self, delta):
             self.engine.set_bpm(self.engine.bpm + delta)
             self.refresh_bpm()
@@ -273,7 +275,7 @@ def run_overlay(engine: Metronome, q: queue.Queue, snd_paths, volume=0.8):
         def close_(self, sender):
             NSApp().terminate_(None)
 
-        # --- таймер: подсветка битов ---
+        # --- timer: beat highlighting ---
         def tick_(self, timer):
             try:
                 while True:
@@ -283,7 +285,7 @@ def run_overlay(engine: Metronome, q: queue.Queue, snd_paths, volume=0.8):
             except queue.Empty:
                 pass
 
-    # --- окно ---
+    # --- window ---
     app = NSApplication.sharedApplication()
     app.setActivationPolicy_(NSApplicationActivationPolicyAccessory)
 
@@ -314,11 +316,11 @@ def run_overlay(engine: Metronome, q: queue.Queue, snd_paths, volume=0.8):
     layer.setCornerRadius_(16.0)
     window.setContentView_(content)
 
-    # Точки-биты (сверху).
+    # Beat dots (top).
     dots = make_label(NSMakeRect(10, H - 54, W - 20, 28), 18, C_DIM)
     content.addSubview_(dots)
 
-    # BPM крупно + − / +.
+    # Large BPM + - / +.
     bpm_label = make_label(NSMakeRect(40, 132, W - 80, 58), 46, NSColor.whiteColor(), bold=True)
     content.addSubview_(bpm_label)
     caption = make_label(NSMakeRect(40, 116, W - 80, 16), 11,
@@ -331,7 +333,7 @@ def run_overlay(engine: Metronome, q: queue.Queue, snd_paths, volume=0.8):
     content.addSubview_(minus)
     content.addSubview_(plus)
 
-    # Доли: − N доли +.
+    # Beats: - N beats +.
     beats_minus = make_button(NSMakeRect(58, 84, 26, 26), "\u2212", 18, b"decBeats:")
     beats_label = make_label(NSMakeRect(90, 83, W - 180, 26), 13,
                              NSColor.colorWithCalibratedWhite_alpha_(0.7, 1.0))
@@ -345,7 +347,7 @@ def run_overlay(engine: Metronome, q: queue.Queue, snd_paths, volume=0.8):
                            color=NSColor.whiteColor())
     content.addSubview_(play_btn)
 
-    # Громкость: иконка + ползунок (снизу).
+    # Volume: icon + slider (bottom).
     vol_icon = make_label(NSMakeRect(12, 11, 26, 22), 14,
                           NSColor.colorWithCalibratedWhite_alpha_(0.7, 1.0))
     vol_icon.setStringValue_("\U0001F509")
@@ -358,12 +360,12 @@ def run_overlay(engine: Metronome, q: queue.Queue, snd_paths, volume=0.8):
     vol_slider.setAction_(b"volume:")
     content.addSubview_(vol_slider)
 
-    # Кнопка закрытия.
+    # Close button.
     close_btn = make_button(NSMakeRect(W - 30, H - 30, 22, 22), "\u2715", 16, b"close:",
                             color=NSColor.colorWithCalibratedWhite_alpha_(0.75, 1.0))
     content.addSubview_(close_btn)
 
-    # Позиция: правый верхний угол.
+    # Position: top-right corner.
     screen = NSScreen.mainScreen().frame()
     window.setFrameOrigin_((screen.size.width - W - 20, screen.size.height - H - 60))
     window.orderFrontRegardless()
@@ -402,23 +404,23 @@ def run_overlay(engine: Metronome, q: queue.Queue, snd_paths, volume=0.8):
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Минималистичный метроном для macOS")
-    parser.add_argument("--bpm", type=int, default=120, help="Темп, BPM (по умолчанию 120)")
-    parser.add_argument("--beats", type=int, default=4, help="Долей в такте (по умолчанию 4)")
+    parser = argparse.ArgumentParser(description="Minimalist metronome for macOS")
+    parser.add_argument("--bpm", type=int, default=120, help="Tempo, BPM (default 120)")
+    parser.add_argument("--beats", type=int, default=4, help="Beats per measure (default 4)")
     parser.add_argument("--volume", type=float, default=0.8,
-                        help="Громкость клика 0.0–1.0 (по умолчанию 0.8)")
+                        help="Click volume 0.0-1.0 (default 0.8)")
     args = parser.parse_args()
 
     try:
         import AppKit  # noqa: F401
     except ImportError:
         sys.stderr.write(
-            "Не найден PyObjC (AppKit). Установите зависимости:\n"
+            "PyObjC (AppKit) not found. Install dependencies:\n"
             "    pip install -r requirements.txt\n"
         )
         sys.exit(1)
 
-    # Синтезируем два клика во временную папку (акцент выше по тону).
+    # Synthesize two clicks into a temp folder (accent has a higher pitch).
     tmp = tempfile.mkdtemp(prefix="metronome_")
     hi = os.path.join(tmp, "click_hi.wav")
     lo = os.path.join(tmp, "click_lo.wav")

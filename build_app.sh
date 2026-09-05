@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
-# Сборка standalone-приложения "Metronome.app" для macOS.
+# Build the standalone "Metronome.app" for macOS.
 set -euo pipefail
 cd "$(dirname "$0")"
 
 if [ ! -d .venv ]; then
-  echo "Нет .venv — создаю и ставлю зависимости…"
+  echo "No .venv — creating it and installing dependencies…"
   python3 -m venv .venv
   ./.venv/bin/pip install -q --upgrade pip
   ./.venv/bin/pip install -q -r requirements.txt
@@ -21,5 +21,5 @@ fi
   metronome.py
 
 echo
-echo "Готово: dist/Metronome.app"
-echo "Запуск: open 'dist/Metronome.app'  (или перетащи в /Applications)"
+echo "Done: dist/Metronome.app"
+echo "Run: open 'dist/Metronome.app'  (or drag it into /Applications)"

@@ -1,17 +1,17 @@
 # Metronome (macOS)
 
-Минималистичный метроном — маленькое плавающее окно поверх всех окон:
+A minimalist metronome — a small floating window that stays on top of all windows:
 
-- темп (BPM) с кнопками **−** / **+**;
+- tempo (BPM) with **-** / **+** buttons;
 - **play / pause**;
-- количество долей в такте с акцентом на первую;
-- точки-биты, подсвечивающие текущую долю;
-- регулятор громкости;
-- звуковой клик (WAV синтезируется на лету, внешних файлов не нужно).
+- beats per measure with an accent on the first beat;
+- beat dots that highlight the current beat;
+- volume control;
+- audio click (WAV synthesized on the fly, no external files needed).
 
-Окно нарисовано на нативном macOS AppKit (PyObjC) — без Tk.
+The window is drawn with native macOS AppKit (PyObjC) — no Tk.
 
-## Установка
+## Install
 
 ```bash
 cd /Users/den/Develop/piano/metronome
@@ -20,31 +20,31 @@ source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
-## Запуск
+## Run
 
 ```bash
 source .venv/bin/activate
-python metronome.py            # темп 120, 4 доли
+python metronome.py            # 120 BPM, 4 beats
 python metronome.py --bpm 96 --beats 3
 python metronome.py --volume 0.5
 ```
 
-## Сборка в приложение (.app)
+## Build an app (.app)
 
 ```bash
 ./build_app.sh
 ```
 
-Готовый бандл появится в `dist/Metronome.app` — можно перетащить в `/Applications`.
+The bundle appears in `dist/Metronome.app` — you can drag it into `/Applications`.
 
-## Управление
+## Controls
 
-- **− / +** — темп на 1 BPM (диапазон 20–300).
-- **▶ / ⏸** — старт / стоп.
-- **− N доли +** — число долей в такте (акцент на первую).
-- **Ползунок снизу** — громкость клика.
-- **Пробел** — play/pause, **стрелки** ↑↓←→ — темп.
-- **Перетащить** — мышью за окно.
-- **Закрыть** — кнопка «✕», правый клик по окну или `Ctrl+C` в терминале.
+- **- / +** — tempo by 1 BPM (range 20–300).
+- **▶ / ⏸** — start / stop.
+- **- N beats +** — beats per measure (accent on the first beat).
+- **Bottom slider** — click volume.
+- **Space** — play/pause, **arrows** ↑↓←→ — tempo.
+- **Drag** — with the mouse anywhere on the window.
+- **Close** — the "✕" button, right-click on the window, or `Ctrl+C` in the terminal.
 
-Окно всегда поверх остальных окон и рабочих столов, без иконки в доке.
+The window always stays above other windows and spaces, with no Dock icon.
